@@ -5,6 +5,7 @@ let package = Package(
     name: "LyricsMenuBar",
     platforms: [.macOS(.v12)],
     targets: [
-        .executableTarget(name: "LyricsMenuBar")
+        .executableTarget(name: "LyricsMenuBar"),
+        .testTarget(name: "LyricsMenuBarTests", dependencies: ["LyricsMenuBar"])
     ]
 )

@@ -8,6 +8,10 @@ struct LyricLine {
 private struct LyricsResponse: Decodable {
     let syncedLyrics: String?
     let plainLyrics: String?
+
+    var hasLyrics: Bool {
+        !(syncedLyrics?.isEmpty ?? true) || !(plainLyrics?.isEmpty ?? true)
+    }
 }
 
 enum LyricsFetcher {
@@ -37,14 +41,15 @@ enum LyricsFetcher {
             let searchURL = URL(string: "https://lrclib.net/api/search?track_name=\(trackEnc)&artist_name=\(artistEnc)")!
             if let searchData = fetchSync(url: searchURL),
                let arr = try? JSONSerialization.jsonObject(with: searchData) as? [[String: Any]],
-               let first = arr.first,
-               let firstData = try? JSONSerialization.data(withJSONObject: first) {
-                payload = firstData
+               let entry = selectEntryWithLyrics(from: arr),
+               let entryData = try? JSONSerialization.data(withJSONObject: entry) {
+                payload = entryData
             }
         }
 
         guard let data = payload,
-              let response = try? JSONDecoder().decode(LyricsResponse.self, from: data) else {
+              let response = try? JSONDecoder().decode(LyricsResponse.self, from: data),
+              response.hasLyrics else {
             return ([], false)
         }
 
@@ -63,6 +68,14 @@ enum LyricsFetcher {
         return ([], false)
     }
 
+    static func selectEntryWithLyrics(from arr: [[String: Any]]) -> [String: Any]? {
+        func nonEmptyString(_ value: Any?) -> Bool {
+            if let s = value as? String { return !s.isEmpty }
+            return false
+        }
+        return arr.first { nonEmptyString($0["syncedLyrics"]) || nonEmptyString($0["plainLyrics"]) }
+    }
+
     private static func fetchSync(url: URL) -> Data? {
         var request = URLRequest(url: url)
         request.setValue("LyricsMenuBar v2.0 (personal use)", forHTTPHeaderField: "User-Agent")
@@ -75,7 +88,7 @@ enum LyricsFetcher {
             semaphore.signal()
         }
         task.resume()
-        _ = semaphore.wait(timeout: .now() + 7)
+        _ = semaphore.wait(timeout: .now() + 6)
         return result
     }
 

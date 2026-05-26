@@ -58,22 +58,23 @@ enum PlayerReader {
 
     static func state(for player: PlayerConfig) -> PlayerState? {
         let script = """
-        if application "\(player.name)" is not running then
+        if application "\(player.name)" is running then
+            tell application "\(player.name)"
+                if player state is playing or player state is paused then
+                    set t to name of current track
+                    set a to artist of current track
+                    set p to player position
+                    set d to duration of current track
+                    set i to \(player.idProperty) of current track
+                    set s to player state as string
+                    return t & "||" & a & "||" & p & "||" & d & "||" & i & "||" & s
+                else
+                    return ""
+                end if
+            end tell
+        else
             return ""
         end if
-        tell application "\(player.name)"
-            if player state is playing or player state is paused then
-                set t to name of current track
-                set a to artist of current track
-                set p to player position
-                set d to duration of current track
-                set i to \(player.idProperty) of current track
-                set s to player state as string
-                return t & "||" & a & "||" & p & "||" & d & "||" & i & "||" & s
-            else
-                return ""
-            end if
-        end tell
         """
         guard let out = runAppleScript(script), out.contains("||") else { return nil }
         let parts = out.components(separatedBy: "||")
