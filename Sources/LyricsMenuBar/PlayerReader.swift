@@ -57,8 +57,10 @@ enum PlayerReader {
     }
 
     static func state(for player: PlayerConfig) -> PlayerState? {
-        guard isAppRunning(player.name) else { return nil }
         let script = """
+        if application "\(player.name)" is not running then
+            return ""
+        end if
         tell application "\(player.name)"
             if player state is playing or player state is paused then
                 set t to name of current track
