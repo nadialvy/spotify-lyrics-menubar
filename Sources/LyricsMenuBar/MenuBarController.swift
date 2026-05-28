@@ -5,6 +5,7 @@ final class MenuBarController {
     private let maxChars = 28
     private let pollInterval: TimeInterval = 0.25
     private let lyricLeadTime: Double = 0.28
+    private let missingStateGraceInterval: TimeInterval = 2.0
 
     private enum DisplayMode: String {
         case overlay
@@ -29,6 +30,7 @@ final class MenuBarController {
     private var currentTrackID: String?
     private var lyrics: [LyricLine] = []
     private var statusText = "♪ Lyrics"
+    private var lastPlayerStateSeenAt: Date?
 
     private var pollTimer: Timer?
     private var isPolling = false
@@ -142,15 +144,24 @@ final class MenuBarController {
 
     private func handle(state: PlayerState?) {
         guard let state = state else {
+            if let lastSeen = lastPlayerStateSeenAt,
+               Date().timeIntervalSince(lastSeen) < missingStateGraceInterval,
+               currentTrackID != nil {
+                return
+            }
+
             overlayController.hide()
             if currentTrackID != nil {
                 currentTrackID = nil
                 lyrics = []
+                lastPlayerStateSeenAt = nil
                 setStatusText(placeholder)
                 nowPlayingItem.title = "Now Playing: -"
             }
             return
         }
+
+        lastPlayerStateSeenAt = Date()
 
         if state.id != currentTrackID {
             currentTrackID = state.id

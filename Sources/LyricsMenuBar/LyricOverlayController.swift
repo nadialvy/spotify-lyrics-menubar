@@ -247,8 +247,16 @@ private final class LyricOverlayView: NSView {
     private enum Metrics {
         static let panelWidth: CGFloat = 248
         static let horizontalPadding: CGFloat = 14
-        static let currentSingleLineHeight: CGFloat = 22
-        static let currentDoubleLineHeight: CGFloat = 42
+        static let currentMinHeight: CGFloat = 22
+        static let currentMaxHeight: CGFloat = 48
+        static let currentMaxLines = 3
+        static let currentFontSizes: [CGFloat] = [17, 16, 15, 14, 13, 12]
+    }
+
+    private struct CurrentLyricLayout {
+        let value: String
+        let font: NSFont
+        let height: CGFloat
     }
 
     private let artistLabel = DraggableTextField(labelWithString: "")
@@ -276,13 +284,9 @@ private final class LyricOverlayView: NSView {
         titleLabel.stringValue = title
         let currentText = current.isEmpty ? "Instrumental" : current
         let availableWidth = textWidth()
-        let currentDisplay = fittedMultilineText(
-            currentText,
-            font: currentLabel.font ?? .systemFont(ofSize: 17, weight: .semibold),
-            maxWidth: availableWidth,
-            maxLines: 2
-        )
+        let currentDisplay = fittedCurrentText(currentText, maxWidth: availableWidth)
 
+        currentLabel.font = currentDisplay.font
         currentLabel.stringValue = currentDisplay.value
         nextLabel.stringValue = fittedSingleLineText(
             next,
@@ -292,9 +296,7 @@ private final class LyricOverlayView: NSView {
         sourceLabel.stringValue = isPaused ? "Paused • Source: \(source)" : "Source: \(source)"
         progressView.progress = progress
 
-        currentHeightConstraint?.constant = currentDisplay.lineCount > 1
-            ? Metrics.currentDoubleLineHeight
-            : Metrics.currentSingleLineHeight
+        currentHeightConstraint?.constant = currentDisplay.height
         needsLayout = true
     }
 
@@ -321,7 +323,7 @@ private final class LyricOverlayView: NSView {
         currentLabel.font = .systemFont(ofSize: 17, weight: .semibold)
         currentLabel.textColor = .white
         currentLabel.lineBreakMode = .byWordWrapping
-        currentLabel.maximumNumberOfLines = 2
+        currentLabel.maximumNumberOfLines = Metrics.currentMaxLines
         currentLabel.allowsDefaultTighteningForTruncation = true
         currentLabel.usesSingleLineMode = false
         currentLabel.cell?.wraps = true
@@ -354,7 +356,7 @@ private final class LyricOverlayView: NSView {
             label.setContentCompressionResistancePriority(.required, for: .vertical)
         }
 
-        let currentHeight = currentLabel.heightAnchor.constraint(equalToConstant: Metrics.currentSingleLineHeight)
+        let currentHeight = currentLabel.heightAnchor.constraint(equalToConstant: Metrics.currentMinHeight)
         currentHeightConstraint = currentHeight
 
         NSLayoutConstraint.activate([
@@ -375,8 +377,8 @@ private final class LyricOverlayView: NSView {
 
             nextLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Metrics.horizontalPadding),
             nextLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Metrics.horizontalPadding),
-            nextLabel.topAnchor.constraint(equalTo: currentLabel.bottomAnchor, constant: 5),
-            nextLabel.heightAnchor.constraint(equalToConstant: 16),
+            nextLabel.topAnchor.constraint(equalTo: currentLabel.bottomAnchor, constant: 4),
+            nextLabel.heightAnchor.constraint(equalToConstant: 14),
 
             nextLabel.bottomAnchor.constraint(lessThanOrEqualTo: sourceLabel.topAnchor, constant: -4),
 
@@ -397,12 +399,36 @@ private final class LyricOverlayView: NSView {
         return max(viewWidth - (Metrics.horizontalPadding * 2), 1)
     }
 
-    private func fittedMultilineText(_ text: String, font: NSFont, maxWidth: CGFloat, maxLines: Int) -> (value: String, lineCount: Int) {
+    private func fittedCurrentText(_ text: String, maxWidth: CGFloat) -> CurrentLyricLayout {
         let normalized = normalizedText(text)
-        guard !normalized.isEmpty else { return ("", 1) }
+        let defaultFont = NSFont.systemFont(ofSize: 17, weight: .semibold)
+        guard !normalized.isEmpty else {
+            return CurrentLyricLayout(value: "", font: defaultFont, height: Metrics.currentMinHeight)
+        }
 
-        let lines = fittedLines(normalized, font: font, maxWidth: maxWidth, maxLines: maxLines)
-        return (lines.joined(separator: "\n"), lines.count)
+        var fallback: CurrentLyricLayout?
+        for fontSize in Metrics.currentFontSizes {
+            let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+            let result = wrappedLines(
+                normalized,
+                font: font,
+                maxWidth: maxWidth,
+                maxLines: Metrics.currentMaxLines
+            )
+            let height = currentTextHeight(lineCount: result.lines.count, font: font)
+            let layout = CurrentLyricLayout(
+                value: result.lines.joined(separator: "\n"),
+                font: font,
+                height: min(height, Metrics.currentMaxHeight)
+            )
+
+            fallback = layout
+            if result.isComplete && height <= Metrics.currentMaxHeight {
+                return layout
+            }
+        }
+
+        return fallback ?? CurrentLyricLayout(value: normalized, font: defaultFont, height: Metrics.currentMinHeight)
     }
 
     private func fittedSingleLineText(_ text: String, font: NSFont, maxWidth: CGFloat) -> String {
@@ -411,7 +437,14 @@ private final class LyricOverlayView: NSView {
         return truncatedSingleLine(normalized, font: font, maxWidth: maxWidth)
     }
 
-    private func fittedLines(_ text: String, font: NSFont, maxWidth: CGFloat, maxLines: Int) -> [String] {
+    private func currentTextHeight(lineCount: Int, font: NSFont) -> CGFloat {
+        let lineHeight = ceil(font.ascender - font.descender + font.leading)
+        return max(lineHeight * CGFloat(max(lineCount, 1)), Metrics.currentMinHeight)
+    }
+
+    private func wrappedLines(_ text: String, font: NSFont, maxWidth: CGFloat, maxLines: Int) -> (lines: [String], isComplete: Bool) {
+        guard maxLines > 0 else { return ([""], false) }
+
         var words = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
         var lines: [String] = []
         var currentLine = ""
@@ -429,8 +462,9 @@ private final class LyricOverlayView: NSView {
 
                 if lines.count == maxLines - 1 {
                     let remaining = words[index...].joined(separator: " ")
-                    lines.append(truncatedSingleLine(remaining, font: font, maxWidth: maxWidth))
-                    return lines
+                    let fits = measuredWidth(remaining, font: font) <= maxWidth
+                    lines.append(fits ? remaining : truncatedSingleLine(remaining, font: font, maxWidth: maxWidth))
+                    return (lines, fits)
                 }
 
                 let split = splitWord(word, font: font, maxWidth: maxWidth)
@@ -452,8 +486,10 @@ private final class LyricOverlayView: NSView {
 
             if lines.count == maxLines - 1 {
                 let remaining = words[index...].joined(separator: " ")
-                lines.append(truncatedSingleLine("\(currentLine) \(remaining)", font: font, maxWidth: maxWidth))
-                return lines
+                let lastLine = "\(currentLine) \(remaining)"
+                let fits = measuredWidth(lastLine, font: font) <= maxWidth
+                lines.append(fits ? lastLine : truncatedSingleLine(lastLine, font: font, maxWidth: maxWidth))
+                return (lines, fits)
             }
 
             lines.append(currentLine)
@@ -464,7 +500,8 @@ private final class LyricOverlayView: NSView {
             lines.append(currentLine)
         }
 
-        return lines.isEmpty ? [""] : Array(lines.prefix(maxLines))
+        guard !lines.isEmpty else { return ([""], true) }
+        return (Array(lines.prefix(maxLines)), lines.count <= maxLines)
     }
 
     private func splitWord(_ word: String, font: NSFont, maxWidth: CGFloat) -> (prefix: String, remainder: String) {
