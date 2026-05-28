@@ -244,6 +244,8 @@ extension LyricOverlayController: NSWindowDelegate {
 }
 
 private final class LyricOverlayView: NSView {
+    fileprivate static let currentLyricColor = NSColor(calibratedRed: 1.00, green: 0.86, blue: 0.18, alpha: 1.00)
+
     private enum Metrics {
         static let panelWidth: CGFloat = 248
         static let horizontalPadding: CGFloat = 14
@@ -254,13 +256,7 @@ private final class LyricOverlayView: NSView {
     }
 
     private enum Palette {
-        static let background = NSColor(calibratedRed: 0.02, green: 0.07, blue: 0.04, alpha: 0.90)
-        static let border = NSColor(calibratedRed: 0.78, green: 0.88, blue: 0.08, alpha: 0.58)
-        static let artist = NSColor(calibratedRed: 0.64, green: 0.82, blue: 0.18, alpha: 0.86)
-        static let title = NSColor(calibratedRed: 1.00, green: 0.62, blue: 0.08, alpha: 0.72)
-        static let current = NSColor(calibratedRed: 1.00, green: 0.86, blue: 0.18, alpha: 1.00)
-        static let upcoming = NSColor.white.withAlphaComponent(0.82)
-        static let source = NSColor(calibratedRed: 0.18, green: 0.66, blue: 0.84, alpha: 0.72)
+        static let current = LyricOverlayView.currentLyricColor
     }
 
     private struct CurrentLyricLayout {
@@ -314,18 +310,18 @@ private final class LyricOverlayView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 10
         layer?.masksToBounds = false
-        layer?.backgroundColor = Palette.background.cgColor
-        layer?.borderColor = Palette.border.cgColor
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.88).cgColor
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.34).cgColor
         layer?.borderWidth = 1.25
 
         artistLabel.font = .systemFont(ofSize: 11, weight: .semibold)
-        artistLabel.textColor = Palette.artist
+        artistLabel.textColor = NSColor.white.withAlphaComponent(0.68)
         artistLabel.lineBreakMode = .byTruncatingTail
         artistLabel.maximumNumberOfLines = 1
         artistLabel.allowsDefaultTighteningForTruncation = true
 
         titleLabel.font = .systemFont(ofSize: 10.5, weight: .medium)
-        titleLabel.textColor = Palette.title
+        titleLabel.textColor = NSColor.white.withAlphaComponent(0.46)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
         titleLabel.allowsDefaultTighteningForTruncation = true
@@ -342,13 +338,13 @@ private final class LyricOverlayView: NSView {
         currentLabel.cell?.lineBreakMode = .byWordWrapping
 
         nextLabel.font = .systemFont(ofSize: 12, weight: .regular)
-        nextLabel.textColor = Palette.upcoming
+        nextLabel.textColor = NSColor.white.withAlphaComponent(0.58)
         nextLabel.lineBreakMode = .byTruncatingTail
         nextLabel.maximumNumberOfLines = 1
         nextLabel.allowsDefaultTighteningForTruncation = true
 
         sourceLabel.font = .systemFont(ofSize: 10, weight: .medium)
-        sourceLabel.textColor = Palette.source
+        sourceLabel.textColor = NSColor.white.withAlphaComponent(0.42)
         sourceLabel.lineBreakMode = .byTruncatingTail
         sourceLabel.maximumNumberOfLines = 1
         sourceLabel.allowsDefaultTighteningForTruncation = true
@@ -608,8 +604,8 @@ private final class LyricProgressView: NSView {
 
     private func setup() {
         wantsLayer = true
-        trackLayer.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.48, blue: 0.29, alpha: 0.42).cgColor
-        fillLayer.backgroundColor = NSColor(calibratedRed: 1.00, green: 0.86, blue: 0.18, alpha: 0.92).cgColor
+        trackLayer.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        fillLayer.backgroundColor = LyricOverlayView.currentLyricColor.withAlphaComponent(0.92).cgColor
         layer?.addSublayer(trackLayer)
         layer?.addSublayer(fillLayer)
     }
