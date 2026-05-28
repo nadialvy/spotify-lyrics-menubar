@@ -5,7 +5,6 @@ final class MenuBarController {
     private let maxChars = 28
     private let pollInterval: TimeInterval = 0.25
     private let lyricLeadTime: Double = 0.28
-    private let defaultOverlayOpacity: CGFloat = 0.86
 
     private enum DisplayMode: String {
         case overlay
@@ -37,6 +36,12 @@ final class MenuBarController {
     private let fetchQueue = DispatchQueue(label: "lyrics.fetch", qos: .utility)
 
     init() {
+        UserDefaults.standard.register(defaults: [
+            DefaultsKey.displayMode: DisplayMode.overlay.rawValue,
+            DefaultsKey.overlayClickThrough: false,
+            DefaultsKey.overlayOpacity: 0.86
+        ])
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         displayModeItem = NSMenuItem(title: "Use Floating Box", action: #selector(toggleDisplayMode), keyEquivalent: "")
@@ -239,17 +244,8 @@ final class MenuBarController {
             displayMode = storedDisplayMode
         }
 
-        if defaults.object(forKey: DefaultsKey.overlayClickThrough) == nil {
-            overlayController.isClickThrough = false
-        } else {
-            overlayController.isClickThrough = defaults.bool(forKey: DefaultsKey.overlayClickThrough)
-        }
-
-        if let opacity = defaults.object(forKey: DefaultsKey.overlayOpacity) as? Double {
-            overlayController.opacity = CGFloat(opacity)
-        } else {
-            overlayController.opacity = defaultOverlayOpacity
-        }
+        overlayController.isClickThrough = defaults.bool(forKey: DefaultsKey.overlayClickThrough)
+        overlayController.opacity = CGFloat(defaults.double(forKey: DefaultsKey.overlayOpacity))
     }
 
     private func applyDisplayMode() {

@@ -73,17 +73,11 @@ final class LyricOverlayController: NSObject {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self,
-            selector: #selector(reposition),
-            name: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil
-        )
     }
 
     deinit {
+        NSObject.cancelPreviousPerformRequests(withTarget: self)
         NotificationCenter.default.removeObserver(self)
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     func showLoading(track: String, artist: String, source: String) {
@@ -239,6 +233,11 @@ extension LyricOverlayController: NSWindowDelegate {
         if abs(origin.x - clamped.x) > 0.5 || abs(origin.y - clamped.y) > 0.5 {
             setPanelOrigin(clamped)
         }
+        NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(savePosition), object: nil)
+        perform(#selector(savePosition), with: nil, afterDelay: 0.5)
+    }
+
+    @objc private func savePosition() {
         UserDefaults.standard.set(Double(panel.frame.origin.x), forKey: DefaultsKey.originX)
         UserDefaults.standard.set(Double(panel.frame.origin.y), forKey: DefaultsKey.originY)
     }
@@ -429,7 +428,8 @@ private final class LyricOverlayView: NSView {
                 }
 
                 if lines.count == maxLines - 1 {
-                    lines.append(truncatedSingleLine(word, font: font, maxWidth: maxWidth))
+                    let remaining = words[index...].joined(separator: " ")
+                    lines.append(truncatedSingleLine(remaining, font: font, maxWidth: maxWidth))
                     return lines
                 }
 
