@@ -5,7 +5,8 @@ final class MenuBarController {
     private let maxChars = 28
     private let pollInterval: TimeInterval = 0.25
     private let lyricLeadTime: Double = 0.28
-    private let missingStateGraceInterval: TimeInterval = 2.0
+    private let missingStateGraceInterval: TimeInterval = 15.0
+    private let maxLyricRetryInterval: TimeInterval = 60.0
 
     private enum DisplayMode: String {
         case overlay
@@ -31,6 +32,9 @@ final class MenuBarController {
     private var lyrics: [LyricLine] = []
     private var statusText = "♪ Lyrics"
     private var lastPlayerStateSeenAt: Date?
+    private var isFetchingLyrics = false
+    private var lyricFetchAttemptCount = 0
+    private var lastLyricFetchAt: Date?
 
     private var pollTimer: Timer?
     private var isPolling = false
@@ -104,7 +108,11 @@ final class MenuBarController {
     @objc private func forceRefresh() {
         currentTrackID = nil
         lyrics = []
+        isFetchingLyrics = false
+        lyricFetchAttemptCount = 0
+        lastLyricFetchAt = nil
         setStatusText(placeholder)
+        poll()
     }
 
     @objc private func toggleDisplayMode() {
@@ -152,8 +160,6 @@ final class MenuBarController {
 
             overlayController.hide()
             if currentTrackID != nil {
-                currentTrackID = nil
-                lyrics = []
                 lastPlayerStateSeenAt = nil
                 setStatusText(placeholder)
                 nowPlayingItem.title = "Now Playing: -"
@@ -166,6 +172,9 @@ final class MenuBarController {
         if state.id != currentTrackID {
             currentTrackID = state.id
             lyrics = []
+            isFetchingLyrics = false
+            lyricFetchAttemptCount = 0
+            lastLyricFetchAt = nil
             statusText = placeholder
             nowPlayingItem.title = "♪ \(state.track) — \(state.artist)"
             setStatusText("Loading lyrics...")
@@ -176,7 +185,10 @@ final class MenuBarController {
             return
         }
 
-        guard !lyrics.isEmpty else { return }
+        guard !lyrics.isEmpty else {
+            handleMissingLyrics(for: state)
+            return
+        }
 
         let adjustedPosition = state.position + lyricLeadTime
         let snapshot = lyricSnapshot(position: adjustedPosition, duration: state.duration)
@@ -202,10 +214,15 @@ final class MenuBarController {
     }
 
     private func startFetch(track: String, artist: String, duration: Double, trackID: String, source: String) {
+        isFetchingLyrics = true
+        lyricFetchAttemptCount += 1
+        lastLyricFetchAt = Date()
+
         fetchQueue.async { [weak self] in
             let (lines, _) = LyricsFetcher.fetch(track: track, artist: artist, duration: duration)
             DispatchQueue.main.async {
                 guard let self = self, self.currentTrackID == trackID else { return }
+                self.isFetchingLyrics = false
                 self.lyrics = lines
                 if lines.isEmpty {
                     self.setStatusText("♪ (no lyrics found)")
@@ -215,6 +232,45 @@ final class MenuBarController {
                 }
             }
         }
+    }
+
+    private func handleMissingLyrics(for state: PlayerState) {
+        if displayMode == .overlay {
+            if isFetchingLyrics || lyricFetchAttemptCount == 0 {
+                overlayController.showLoading(track: state.track, artist: state.artist, source: state.source)
+            } else {
+                overlayController.showNoLyrics(track: state.track, artist: state.artist, source: state.source)
+            }
+        }
+
+        retryLyricsIfNeeded(for: state)
+    }
+
+    private func retryLyricsIfNeeded(for state: PlayerState) {
+        guard !isFetchingLyrics else { return }
+
+        let retryInterval = lyricRetryInterval()
+        if let lastFetch = lastLyricFetchAt,
+           Date().timeIntervalSince(lastFetch) < retryInterval {
+            return
+        }
+
+        if displayMode == .overlay {
+            overlayController.showLoading(track: state.track, artist: state.artist, source: state.source)
+        }
+        startFetch(
+            track: state.track,
+            artist: state.artist,
+            duration: state.duration,
+            trackID: state.id,
+            source: state.source
+        )
+    }
+
+    private func lyricRetryInterval() -> TimeInterval {
+        let retryStep = max(lyricFetchAttemptCount, 1)
+        let exponent = Double(min(retryStep - 1, 4))
+        return min(pow(2, exponent) * 5.0, maxLyricRetryInterval)
     }
 
     private func lyricSnapshot(position: Double, duration: Double) -> (current: String, next: String, progress: Double) {
