@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(realpath "$(dirname "$0")")"
+
 echo "==> Installing Lyrics MenuBar for Linux..."
 echo ""
 
@@ -15,6 +17,10 @@ if ! python3 -c "import dbus" 2>/dev/null; then
     MISSING+=("python3-dbus")
 fi
 
+if ! python3 -c "import requests" 2>/dev/null; then
+    MISSING+=("python3-requests")
+fi
+
 if ! python3 -c "import gi; gi.require_version('AppIndicator3', '0.1'); from gi.repository import AppIndicator3" 2>/dev/null; then
     MISSING+=("gir1.2-appindicator3-0.1")
 fi
@@ -26,16 +32,16 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     echo ""
 fi
 
-# Install Python dependencies
-echo "==> Installing Python dependencies..."
-pip3 install --user -r requirements.txt
-echo ""
+# Fallback: if requests is still not available after apt, try pip
+if ! python3 -c "import requests" 2>/dev/null; then
+    echo "==> Installing Python dependencies via pip..."
+    pip3 install --user -r "$SCRIPT_DIR/requirements.txt"
+    echo ""
+fi
 
 # Create desktop entry for autostart (optional)
 DESKTOP_DIR="$HOME/.config/autostart"
 mkdir -p "$DESKTOP_DIR"
-
-SCRIPT_DIR="$(realpath "$(dirname "$0")")"
 
 cat > "$DESKTOP_DIR/lyrics-menubar.desktop" << EOF
 [Desktop Entry]

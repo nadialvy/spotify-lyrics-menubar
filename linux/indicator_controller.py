@@ -75,8 +75,13 @@ class IndicatorController:
 
     def _poll(self) -> bool:
         """Poll the player state and update the indicator. Returns True to keep the timer alive."""
-        state = current_state()
-        self._handle_state(state)
+        import threading
+
+        def _do_poll():
+            state = current_state()
+            GLib.idle_add(self._handle_state, state)
+
+        threading.Thread(target=_do_poll, daemon=True).start()
         return True  # Keep the timer running
 
     def _handle_state(self, state: PlayerState | None):

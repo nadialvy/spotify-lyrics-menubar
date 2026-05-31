@@ -34,8 +34,14 @@ MPRIS_PLAYER_IFACE = "org.mpris.MediaPlayer2.Player"
 DBUS_PROPERTIES_IFACE = "org.freedesktop.DBus.Properties"
 
 
+_session_bus = None
+
+
 def _get_session_bus():
-    return dbus.SessionBus()
+    global _session_bus
+    if _session_bus is None:
+        _session_bus = dbus.SessionBus()
+    return _session_bus
 
 
 def _get_running_players() -> list[str]:
@@ -63,7 +69,10 @@ def _get_player_state(bus_name: str) -> PlayerState | None:
 
         track = str(metadata.get("xesam:title", ""))
         artists = metadata.get("xesam:artist", [])
-        artist = str(artists[0]) if artists else ""
+        if isinstance(artists, str):
+            artist = artists
+        else:
+            artist = str(artists[0]) if artists else ""
         duration_us = int(metadata.get("mpris:length", 0))  # microseconds
         track_id = str(metadata.get("mpris:trackid", ""))
 
@@ -104,14 +113,13 @@ def current_state() -> PlayerState | None:
 
     running.sort(key=priority)
 
-    states = []
+    paused_fallback = None
     for bus_name in running:
         state = _get_player_state(bus_name)
         if state:
-            states.append(state)
+            if state.playing:
+                return state
+            if paused_fallback is None:
+                paused_fallback = state
 
-    # Prefer playing over paused
-    for s in states:
-        if s.playing:
-            return s
-    return states[0] if states else None
+    return paused_fallback
