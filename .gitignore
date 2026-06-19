@@ -5,3 +5,7 @@ LyricsMenuBar.app/
 *.dmg
 .dmg-staging/
 .DS_Store
+# Python
+__pycache__/
+*.pyc
+*.pyo
