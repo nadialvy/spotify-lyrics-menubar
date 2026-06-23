@@ -1,6 +1,6 @@
 # Lyrics Menu Bar
 
-A lightweight native macOS menu bar app that shows time-synced lyrics for the song currently playing in **Spotify** or **Apple Music** — no login, no API key, no setup beyond a couple of clicks.
+A lightweight native macOS menu bar app that shows time-synced lyrics for the song currently playing in **Spotify**, **Apple Music**, or **TIDAL** — no login, no API key, no setup beyond a couple of clicks.
 
 ![macOS](https://img.shields.io/badge/macOS-12%2B-blue) ![Swift](https://img.shields.io/badge/Swift-5.9%2B-orange)
 
@@ -42,8 +42,8 @@ That's just macOS being cautious — it doesn't mean anything is wrong.
 
 ## How It Works
 
-- Reads the current track, artist, and playback position via AppleScript from whichever app is active (Spotify or the macOS Music app).
-- If both are running, prefers the one that is actually playing.
+- Reads the current track, artist, and playback position from the active app (Spotify or macOS Music app via AppleScript, or TIDAL via the macOS MediaRemote API).
+- If multiple players are running, prefers the one that is actually playing.
 - Fetches synced lyrics from [lrclib.net](https://lrclib.net) (falls back to plain lyrics with estimated timing when no synced version exists).
 - Updates the menu bar title in real time as the song progresses.
 
@@ -118,7 +118,7 @@ To skip the DMG step (faster during development): `./build.sh --no-dmg`
 ├── Sources/LyricsMenuBar/
 │   ├── main.swift                           # Entry point + AppDelegate
 │   ├── MenuBarController.swift              # NSStatusItem + timer + menu
-│   ├── PlayerReader.swift                   # AppleScript bridge to Spotify/Music
+│   ├── PlayerReader.swift                   # Player state reader (AppleScript for Spotify/Music, MediaRemote for TIDAL)
 │   └── LyricsFetcher.swift                  # HTTP to lrclib.net + LRC parser
 └── LyricsMenuBar.app/                       # Built bundle (gitignored)
 ```

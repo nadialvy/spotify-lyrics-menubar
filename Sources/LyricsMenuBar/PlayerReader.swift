@@ -1,4 +1,4 @@
-import Foundation
+import Cocoa
 
 struct PlayerState {
     let track: String
@@ -94,9 +94,100 @@ enum PlayerReader {
         )
     }
 
+    private static let mediaRemoteBundle: CFBundle? = {
+        return CFBundleCreate(kCFAllocatorDefault, NSURL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework"))
+    }()
+    
+    private typealias MRMediaRemoteGetNowPlayingApplicationPIDFunction = @convention(c) (DispatchQueue, @escaping (Int32) -> Void) -> Void
+    private typealias MRMediaRemoteGetNowPlayingInfoFunction = @convention(c) (DispatchQueue, @escaping (CFDictionary) -> Void) -> Void
+    
+    private static let MRMediaRemoteGetNowPlayingApplicationPID: MRMediaRemoteGetNowPlayingApplicationPIDFunction? = {
+        guard let bundle = mediaRemoteBundle,
+              let pointer = CFBundleGetFunctionPointerForName(bundle, "MRMediaRemoteGetNowPlayingApplicationPID" as CFString) else {
+            return nil
+        }
+        return unsafeBitCast(pointer, to: MRMediaRemoteGetNowPlayingApplicationPIDFunction.self)
+    }()
+    
+    private static let MRMediaRemoteGetNowPlayingInfo: MRMediaRemoteGetNowPlayingInfoFunction? = {
+        guard let bundle = mediaRemoteBundle,
+              let pointer = CFBundleGetFunctionPointerForName(bundle, "MRMediaRemoteGetNowPlayingInfo" as CFString) else {
+            return nil
+        }
+        return unsafeBitCast(pointer, to: MRMediaRemoteGetNowPlayingInfoFunction.self)
+    }()
+
+    private static func fetchMediaRemoteState() -> PlayerState? {
+        guard let getNowPlayingApplicationPID = MRMediaRemoteGetNowPlayingApplicationPID,
+              let getNowPlayingInfo = MRMediaRemoteGetNowPlayingInfo else {
+            return nil
+        }
+        
+        var pid: Int32 = 0
+        let semaPID = DispatchSemaphore(value: 0)
+        getNowPlayingApplicationPID(DispatchQueue.global()) { returnedPid in
+            pid = returnedPid
+            semaPID.signal()
+        }
+        _ = semaPID.wait(timeout: .now() + 0.5)
+        
+        guard pid > 0 else { return nil }
+        
+        guard let app = NSRunningApplication(processIdentifier: pid),
+              let bundleID = app.bundleIdentifier,
+              bundleID.lowercased().contains("tidal") else {
+            return nil
+        }
+        
+        var state: PlayerState? = nil
+        let semaInfo = DispatchSemaphore(value: 0)
+        getNowPlayingInfo(DispatchQueue.global()) { info in
+            let dict = info as NSDictionary
+            if let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String,
+               let artist = dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String {
+                let duration = dict["kMRMediaRemoteNowPlayingInfoDuration"] as? Double ?? 0.0
+                var elapsed = dict["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double ?? 0.0
+                let playbackRate = dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? 0.0
+                let isPlaying = playbackRate > 0.0
+                
+                if isPlaying, let timestamp = dict["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date {
+                    let timeSinceLastUpdate = Date().timeIntervalSince(timestamp)
+                    elapsed += timeSinceLastUpdate
+                }
+                
+                let contentID = dict["kMRMediaRemoteNowPlayingInfoContentItemIdentifier"] as? String ?? ""
+                let trackID = "TIDAL:\(contentID.isEmpty ? "\(title)-\(artist)" : contentID)"
+                
+                state = PlayerState(
+                    track: title,
+                    artist: artist,
+                    position: elapsed,
+                    duration: duration,
+                    id: trackID,
+                    playing: isPlaying,
+                    source: "TIDAL"
+                )
+            }
+            semaInfo.signal()
+        }
+        _ = semaInfo.wait(timeout: .now() + 0.5)
+        
+        return state
+    }
+
     static func currentState() -> PlayerState? {
         let states = players.compactMap { state(for: $0) }
         if let playing = states.first(where: { $0.playing }) { return playing }
+        
+        if let tidalState = fetchMediaRemoteState() {
+            if tidalState.playing {
+                return tidalState
+            }
+            if states.isEmpty {
+                return tidalState
+            }
+        }
+        
         return states.first
     }
 }
